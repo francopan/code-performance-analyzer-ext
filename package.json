@@ -11,29 +11,33 @@
   ],
   "main": "./out/extension.js",
   "activationEvents": [],
-  "contributes": {
-    "commands": [
-      {
-        "command": "extension.analyzeFunction",
-        "title": "Analyze Function",
-        "category": "Code Analysis"
+
+    "contributes": {
+      "commands": [
+        {
+          "command": "extension.analyzeSelectedCodeAST",
+          "title": "Analyze Selected Code (AST)"
+        },
+        {
+          "command": "extension.analyzeSelectedCodeLLM",
+          "title": "Analyze Selected Code (LLM)"
+        }
+      ],
+      "menus": {
+        "editor/context": [
+          {
+            "command": "extension.analyzeSelectedCodeAST",
+            "when": "editorTextFocus && editorLangId == 'c'",
+            "group": "navigation"
+          },
+          {
+            "command": "extension.analyzeSelectedCodeLLM",
+            "when": "editorTextFocus && editorLangId == 'c'",
+            "group": "navigation"
+          }
+        ]
       }
-    ],
-    "languages": [
-      {
-        "id": "c",
-        "aliases": [
-          "C",
-          "c"
-        ],
-        "extensions": [
-          ".c",
-          ".h"
-        ],
-        "configuration": "./language-configuration.json"
-      }
-    ]
-  },
+    },  
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./ && npm run copyTemplates",

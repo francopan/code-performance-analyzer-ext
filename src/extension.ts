@@ -3,85 +3,91 @@ import { ASTAnalyzer } from './analyzers/ast-analyzer';
 import { LLMAnalyzer } from './analyzers/llm-analyzer';
 import { commands } from './constants/commands.const';
 import { CCodeLensProvider } from './lenses/c.lens';
-import { AnalysisResult } from './models/analysis-result';
 import { AnalysisResultWebview } from './webviews/analyzis-result.webview';
-
 
 let statusBar: vscode.StatusBarItem;
 let codeLens: vscode.Disposable | undefined;
 let webView: AnalysisResultWebview | undefined;
-let llmAnalyzer: LLMAnalyzer | undefined;
-let astAnalyzer: ASTAnalyzer | undefined;
-
+let llmAnalyzer: LLMAnalyzer;
+let astAnalyzer: ASTAnalyzer;
 
 export function activate(context: vscode.ExtensionContext) {
-	// Start WebView
+	initializeWebView(context);
+	registerCodeLensProvider(context);
+	initializeStatusBar(context);
+	registerCommands(context);
+	instantiateAnalyzers();
+}
+
+function initializeWebView(context: vscode.ExtensionContext) {
 	webView = AnalysisResultWebview.getInstance();
 	webView.setExtensionPath(context.extensionPath);
 	webView.setIsDebugMode(process.env.DEBUG_MODE === 'true');
 	context.subscriptions.push(webView);
+}
 
-	// Start Code Lens 
+function registerCodeLensProvider(context: vscode.ExtensionContext) {
 	codeLens = vscode.languages.registerCodeLensProvider({ language: 'c' }, CCodeLensProvider.getInstance());
 	context.subscriptions.push(codeLens);
+}
 
-	// Start Status Bar 
+function initializeStatusBar(context: vscode.ExtensionContext) {
 	statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
+	statusBar.text = 'Ready';
 	context.subscriptions.push(statusBar);
+}
 
-	// Add Analyze Commands
-	const { analyzeASTCommand, analyzeLLMCommand } = addAnalyzeCommands();
-	context.subscriptions.push(analyzeASTCommand);
-	context.subscriptions.push(analyzeLLMCommand);
-
-	// Instantiate Analyzers
+function instantiateAnalyzers() {
 	llmAnalyzer = new LLMAnalyzer();
 	astAnalyzer = new ASTAnalyzer();
 }
 
-function addAnalyzeCommands() {
-	const analyzeASTCommand = vscode.commands.registerCommand(commands.analyzeFunctionAST, async (uri: vscode.Uri, range: vscode.Range) => {
-		await analyzeSelectedCode(uri, range, 'ast');
-	});
+function registerCommands(context: vscode.ExtensionContext) {
+	const commandsToRegister: Array<{ command: string, method: 'ast' | 'llm', isContextMenu?: boolean }> = [
+		{ command: commands.analyzeFunctionAST, method: 'ast' },
+		{ command: commands.analyzeFunctionLLM, method: 'llm' },
+		{ command: commands.analyzeSelectedCodeAST, method: 'ast', isContextMenu: true },
+		{ command: commands.analyzeSelectedCodeLLM, method: 'llm', isContextMenu: true }
+	];
 
-	const analyzeLLMCommand = vscode.commands.registerCommand(commands.analyzeFunctionLLM, async (uri: vscode.Uri, range: vscode.Range) => {
-		await analyzeSelectedCode(uri, range, 'llm');
-	});
-	return { analyzeASTCommand, analyzeLLMCommand };
+	for (const { command, method, isContextMenu = false } of commandsToRegister) {
+		const registerCommand = vscode.commands.registerCommand(command, async (uri: vscode.Uri, range: vscode.Range) => {
+			await analyzeSelectedCode(uri, range, method, !isContextMenu);
+		});
+		context.subscriptions.push(registerCommand);
+	}
 }
 
-async function analyzeSelectedCode(uri: vscode.Uri, range: vscode.Range, method: 'ast' | 'llm') {
-	const document = await vscode.workspace.openTextDocument(uri);
-	const code = document.getText(range);
-
-	if (!code) {
-		vscode.window.showErrorMessage('No code selected.');
-		return;
-	}
-
-	statusBar.text = 'Analyzing code...';
-	statusBar.show();
-
+async function analyzeSelectedCode(uri: vscode.Uri, range: vscode.Range, method: 'ast' | 'llm', updateCodeLens = true) {
 	try {
-		let analysisResult: AnalysisResult | undefined;
+		const document = await vscode.workspace.openTextDocument(uri);
+		const code = document.getText(range);
 
-		if (method === 'ast') {
-			analysisResult = await astAnalyzer?.analyze(code);
-		} else {
-			analysisResult = await llmAnalyzer?.analyze(code);
+		if (!code) {
+			throw new Error('No code selected.');
 		}
+
+		statusBar.text = 'Analyzing code...';
+		statusBar.show();
+
+		const analysisResult = method === 'ast'
+			? await astAnalyzer.analyze(code)
+			: await llmAnalyzer.analyze(code);
 
 		if (analysisResult) {
-			CCodeLensProvider.updateAnalysisResult(uri, range, analysisResult);
+			if (updateCodeLens) {
+				CCodeLensProvider.updateAnalysisResult(uri, range, analysisResult);
+			}
 			await vscode.window.activeTextEditor?.document.save();
 			webView?.showAnalysisResult(analysisResult);
+		} else {
+			throw new Error('Analysis result is undefined.');
 		}
-	} catch (error) {
-		vscode.window.showErrorMessage('Failed to analyze code.');
+	} catch (error: any) {
+		vscode.window.showErrorMessage(`Failed to analyze code: ${error.message}`);
 		console.error(error);
 	} finally {
 		statusBar.text = 'Analysis completed';
 		setTimeout(() => statusBar.hide(), 3000);
 	}
 }
-
