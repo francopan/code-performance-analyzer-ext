@@ -1,4 +1,5 @@
-import { CancellationToken, CodeLens, CodeLensProvider, ProviderResult, Range, TextDocument, Uri, languages, window } from "vscode";
+import { CancellationToken, CodeLens, CodeLensProvider, ProviderResult, Range, TextDocument, Uri, window } from "vscode";
+import { commands } from "../constants/commands.const";
 import { AnalysisResult } from "../models/analysis-result";
 
 export class CCodeLensProvider implements CodeLensProvider {
@@ -29,9 +30,8 @@ export class CCodeLensProvider implements CodeLensProvider {
 		}
 	}
 
-	provideCodeLenses(document: TextDocument, token: CancellationToken): ProviderResult<CodeLens[]> {
+	public provideCodeLenses(document: TextDocument, token: CancellationToken): ProviderResult<CodeLens[]> {
 		const codeLenses: CodeLens[] = [];
-
 		const text = document.getText();
 		const functionRegex = /[\w]+\s+[\w]+\s*\([^)]*\)\s*{?/g;
 		let match: RegExpExecArray | null;
@@ -41,17 +41,27 @@ export class CCodeLensProvider implements CodeLensProvider {
 			const range = new Range(line.range.start, line.range.end);
 
 			const analysisResult = CCodeLensProvider.analysisResults.get(document.uri.toString())?.get(line.lineNumber);
-			const annotationText = analysisResult
-				? ` Complexity: ${analysisResult.bigO}`
-				: '';
+
 
 			codeLenses.push(new CodeLens(range, {
-				title: `Analyze${annotationText}`,
-				command: 'extension.analyzeFunction',
+				title: `Analyze AST`,
+				command: commands.analyzeFunctionAST,
 				arguments: [document.uri, range]
 			}));
-		}
 
+			codeLenses.push(new CodeLens(range, {
+				title: `Analyze LLM`,
+				command: commands.analyzeFunctionLLM,
+				arguments: [document.uri, range]
+			}));
+
+			codeLenses.push(new CodeLens(range, {
+				title: analysisResult
+					? ` Complexity: ${analysisResult.bigO}`
+					: '',
+				command: commands.analyzeFunctionLLM
+			}));
+		}
 		return codeLenses;
 	}
 

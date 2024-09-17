@@ -1,124 +1,87 @@
 import * as vscode from 'vscode';
-import axios from 'axios';
+import { ASTAnalyzer } from './analyzers/ast-analyzer';
+import { LLMAnalyzer } from './analyzers/llm-analyzer';
+import { commands } from './constants/commands.const';
+import { CCodeLensProvider } from './lenses/c.lens';
 import { AnalysisResult } from './models/analysis-result';
-import { CCodeLensProvider } from './providers/c-code-lens-provider';
+import { AnalysisResultWebview } from './webviews/analyzis-result.webview';
 
-let statusBarItem: vscode.StatusBarItem;
+
+let statusBar: vscode.StatusBarItem;
+let codeLens: vscode.Disposable | undefined;
+let webView: AnalysisResultWebview | undefined;
+let llmAnalyzer: LLMAnalyzer | undefined;
+let astAnalyzer: ASTAnalyzer | undefined;
+
 
 export function activate(context: vscode.ExtensionContext) {
-	const codeLensProvider = vscode.languages.registerCodeLensProvider({ language: 'c' }, CCodeLensProvider.getInstance());
-	context.subscriptions.push(codeLensProvider);
+	// Start WebView
+	webView = AnalysisResultWebview.getInstance();
+	webView.setExtensionPath(context.extensionPath);
+	webView.setIsDebugMode(process.env.DEBUG_MODE === 'true');
+	context.subscriptions.push(webView);
 
-	// Create and show a status bar item
-	statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
-	context.subscriptions.push(statusBarItem);
+	// Start Code Lens 
+	codeLens = vscode.languages.registerCodeLensProvider({ language: 'c' }, CCodeLensProvider.getInstance());
+	context.subscriptions.push(codeLens);
 
-	let analyzeFunctionCommand = vscode.commands.registerCommand('extension.analyzeFunction', async (uri: vscode.Uri, range: vscode.Range) => {
-		const document = await vscode.workspace.openTextDocument(uri);
-		const code = document.getText(range);
+	// Start Status Bar 
+	statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
+	context.subscriptions.push(statusBar);
 
-		if (!code) {
-			vscode.window.showErrorMessage('No code selected.');
-			return;
-		}
+	// Add Analyze Commands
+	const { analyzeASTCommand, analyzeLLMCommand } = addAnalyzeCommands();
+	context.subscriptions.push(analyzeASTCommand);
+	context.subscriptions.push(analyzeLLMCommand);
 
-		statusBarItem.text = 'Analyzing code...';
-		statusBarItem.show();
-
-		try {
-			const analysisResult = await analyzeCode(code);
-			// Notify CodeLens provider of the update
-			CCodeLensProvider.updateAnalysisResult(uri, range, analysisResult);
-
-			// Show the result in a webview
-			showAnalysisResult(analysisResult);
-
-			// Force refresh of the CodeLens provider
-			vscode.window.activeTextEditor?.document.save();
-
-		} catch (error) {
-			vscode.window.showErrorMessage('Failed to analyze code.');
-			console.error(error);
-		} finally {
-			statusBarItem.text = 'Analysis completed';
-			setTimeout(() => statusBarItem.hide(), 3000); // Hide status after 3 seconds
-		}
-	});
-
-	context.subscriptions.push(analyzeFunctionCommand);
+	// Instantiate Analyzers
+	llmAnalyzer = new LLMAnalyzer();
+	astAnalyzer = new ASTAnalyzer();
 }
 
-async function analyzeCode(code: string): Promise<AnalysisResult> {
-	const url = 'http://127.0.0.1:11434/api/generate';
-	const prompt = `Code: \`\`\`c\n${code}\n\`\`\` 
-    Analyze the code for its time complexity in Big O notation. 
-    IN ORDER FOR ME TO PARSE THE RESULT, RETURN A JSON OBJECT WITH KEYS "bigO" AND "message". USE "message" FOR ANY EXPLANATION OR ERROR, BUT DO NOT INCLUDE ANY OTHER TEXT BEFORE OR AFTER THE JSON.
+function addAnalyzeCommands() {
+	const analyzeASTCommand = vscode.commands.registerCommand(commands.analyzeFunctionAST, async (uri: vscode.Uri, range: vscode.Range) => {
+		await analyzeSelectedCode(uri, range, 'ast');
+	});
 
-    Expected result format:
+	const analyzeLLMCommand = vscode.commands.registerCommand(commands.analyzeFunctionLLM, async (uri: vscode.Uri, range: vscode.Range) => {
+		await analyzeSelectedCode(uri, range, 'llm');
+	});
+	return { analyzeASTCommand, analyzeLLMCommand };
+}
 
-    {
-        "bigO": "O(n^2)",
-        "message": "Explanation of the time complexity"
-    }
+async function analyzeSelectedCode(uri: vscode.Uri, range: vscode.Range, method: 'ast' | 'llm') {
+	const document = await vscode.workspace.openTextDocument(uri);
+	const code = document.getText(range);
 
-	OR
+	if (!code) {
+		vscode.window.showErrorMessage('No code selected.');
+		return;
+	}
 
-	{
-        "bigO": null,
-        "message": "Explanation of the reason why cannot give complexity"
-    }
-    `;
+	statusBar.text = 'Analyzing code...';
+	statusBar.show();
 
 	try {
-		const response = await axios.post(url, {
-			model: 'mistral',
-			prompt: prompt,
-			stream: false
-		});
-		console.log(response.data)
-		const responseText = response.data.response.trim();
+		let analysisResult: AnalysisResult | undefined;
 
-		let result;
-		try {
-			result = JSON.parse(responseText) as AnalysisResult;
-
-		} catch (e) {
-			console.error('Failed to parse JSON response:', responseText);
-			throw new Error('Invalid JSON response');
+		if (method === 'ast') {
+			analysisResult = await astAnalyzer?.analyze(code);
+		} else {
+			analysisResult = await llmAnalyzer?.analyze(code);
 		}
 
-		return result;
+		if (analysisResult) {
+			CCodeLensProvider.updateAnalysisResult(uri, range, analysisResult);
+			await vscode.window.activeTextEditor?.document.save();
+			webView?.showAnalysisResult(analysisResult);
+		}
 	} catch (error) {
-		console.error('Error while analyzing code:', error);
-		throw error;
+		vscode.window.showErrorMessage('Failed to analyze code.');
+		console.error(error);
+	} finally {
+		statusBar.text = 'Analysis completed';
+		setTimeout(() => statusBar.hide(), 3000);
 	}
 }
 
-function showAnalysisResult(result: AnalysisResult) {
-	const panel = vscode.window.createWebviewPanel(
-		'analysisResult',
-		'Analysis Result',
-		vscode.ViewColumn.Beside,
-		{}
-	);
-
-	panel.webview.html = getWebviewContent(result);
-}
-
-function getWebviewContent(result: AnalysisResult): string {
-	return `
-		<!DOCTYPE html>
-		<html lang="en">
-		<head>
-			<meta charset="UTF-8">
-			<title>Analysis Result</title>
-		</head>
-		<body>
-			<h1>Analysis Result</h1>
-			<p><strong>Big O:</strong> ${result.bigO ? result.bigO : 'N/A'}</p>
-			<p><strong>Message:</strong> ${result.message}</p>
-		</body>
-		</html>`;
-}
-
-export function deactivate() { }
