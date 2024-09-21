@@ -1,4 +1,4 @@
-import { AnalysisResult } from "../models/analysis-result";
+import { AnalysisResult } from "../models/analysis-result.model";
 
 export interface Analyzer {
     analyze: (code: string) => Promise<AnalysisResult>

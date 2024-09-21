@@ -1,7 +1,7 @@
 import { render } from "ejs";
 import { join } from "path";
 import { readFileSync } from "fs";
-import { AnalysisResult } from "../models/analysis-result";
+import { AnalysisResult } from "../models/analysis-result.model";
 import * as vscode from 'vscode';
 import { panels } from "../constants/panels.const";
 

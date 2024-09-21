@@ -1,7 +1,7 @@
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as vscode from 'vscode';
-import { AnalysisResult } from "../models/analysis-result";
+import { AnalysisResult } from "../models/analysis-result.model";
 import { Analyzer } from "./analyzer.interface";
 
 const execPromise = promisify(exec);

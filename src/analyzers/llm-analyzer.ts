@@ -1,6 +1,6 @@
 import axios from "axios";
 import { prompts } from "../constants/prompts.const";
-import { AnalysisResult } from "../models/analysis-result";
+import { AnalysisResult } from "../models/analysis-result.model";
 import { Analyzer } from "./analyzer.interface";
 
 export class LLMAnalyzer implements Analyzer {

@@ -1,6 +1,6 @@
 import { CancellationToken, CodeLens, CodeLensProvider, ProviderResult, Range, TextDocument, Uri, window } from "vscode";
 import { commands } from "../constants/commands.const";
-import { AnalysisResult } from "../models/analysis-result";
+import { AnalysisResult } from "../models/analysis-result.model";
 
 export class CCodeLensProvider implements CodeLensProvider {
 	private static instance: CCodeLensProvider;
