@@ -5,13 +5,19 @@ import { Analyzer } from "./analyzer.interface";
 
 export class LLMAnalyzer implements Analyzer {
 
-    private readonly llmAPIURL = 'http://127.0.0.1:11434/api/generate';
+    private readonly llmAPIURL: string;
+    private readonly model: string;
+
+    constructor(llmAPIURL: string = 'http://127.0.0.1:11434/api/generate', model: string = 'mistral') {
+        this.llmAPIURL = llmAPIURL;
+        this.model = model;
+    }
 
     public async analyze(code: string): Promise<AnalysisResult> {
         const prompt = prompts.analyzeCode.replace('{{code}}', code);
         try {
             const response = await axios.post(this.llmAPIURL, {
-                model: 'mistral',
+                model: this.model,
                 prompt: prompt,
                 stream: false
             });

@@ -6,7 +6,6 @@ export class CCodeLensProvider implements CodeLensProvider {
 	private static instance: CCodeLensProvider;
 	private static analysisResults: Map<string, Map<number, AnalysisResult>> = new Map();
 
-	// Private constructor to prevent instantiation
 	private constructor() { }
 
 	public static getInstance(): CCodeLensProvider {
@@ -39,9 +38,7 @@ export class CCodeLensProvider implements CodeLensProvider {
 		while (match = functionRegex.exec(text)) {
 			const line = document.lineAt(document.positionAt(match.index).line);
 			const range = new Range(line.range.start, line.range.end);
-
 			const analysisResult = CCodeLensProvider.analysisResults.get(document.uri.toString())?.get(line.lineNumber);
-
 
 			codeLenses.push(new CodeLens(range, {
 				title: `Analyze AST`,

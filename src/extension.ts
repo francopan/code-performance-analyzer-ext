@@ -38,7 +38,12 @@ function initializeStatusBar(context: vscode.ExtensionContext) {
 }
 
 function instantiateAnalyzers() {
-	llmAnalyzer = new LLMAnalyzer();
+	const config = vscode.workspace.getConfiguration('llmAnalyzer');
+	const apiUrl = config.get<string>('apiUrl') || 'http://127.0.0.1:11434/api/generate';
+	const model = config.get<string>('model') || 'mistral';
+
+
+	llmAnalyzer = new LLMAnalyzer(apiUrl, model);
 	astAnalyzer = new ASTAnalyzer();
 }
 

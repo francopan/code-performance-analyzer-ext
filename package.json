@@ -35,7 +35,23 @@
           "group": "navigation"
         }
       ]
-    }
+    },
+    "configuration": {
+      "type": "object",
+      "title": "LLM Analyzer Settings",
+      "properties": {
+          "llmAnalyzer.apiUrl": {
+              "type": "string",
+              "default": "http://127.0.0.1:11434/api/generate",
+              "description": "The URL for the Ollama API."
+          },
+          "llmAnalyzer.model": {
+              "type": "string",
+              "default": "mistral",
+              "description": "The model name to use with the Ollama API."
+          }
+      }
+  }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
