@@ -1,4 +1,5 @@
 import axios from "axios";
+import * as vscode from 'vscode';
 import { prompts } from "../constants/prompts.const";
 import { AnalysisResult } from "../models/analysis-result.model";
 import { Analyzer } from "./analyzer.interface";
@@ -7,10 +8,12 @@ export class LLMAnalyzer implements Analyzer {
 
     private readonly llmAPIURL: string;
     private readonly model: string;
+    private outputChannel: vscode.OutputChannel;
 
     constructor(llmAPIURL: string = 'http://127.0.0.1:11434/api/generate', model: string = 'mistral') {
         this.llmAPIURL = llmAPIURL;
         this.model = model;
+        this.outputChannel = vscode.window.createOutputChannel('CodePerformanceDebuggerLLM');
     }
 
     public async analyze(code: string): Promise<AnalysisResult> {

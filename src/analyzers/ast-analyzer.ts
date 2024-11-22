@@ -5,6 +5,7 @@ import { AnalysisResult } from "../models/analysis-result.model";
 import { BinaryOperator, CallExpr, DeclRefExpr, DeclStmt, ForStmt, IfStmt, ImplicitCastExpr, IntegerLiteral, VarDecl, WhileStmt } from "../models/ast-node-kind.model";
 import { ASTNode } from "../models/ast-node.model";
 import { Analyzer } from "./analyzer.interface";
+import { NodeKind } from "../enums/node-kind.enum";
 
 const execPromise = promisify(exec);
 type ClangNode = ASTNode;
@@ -25,7 +26,7 @@ export class ASTAnalyzer implements Analyzer {
     constructor() {
         this.complexity = 0;
         this.variableTable = new Map<string, number>();
-        this.outputChannel = vscode.window.createOutputChannel('CodePerformanceDebugger');
+        this.outputChannel = vscode.window.createOutputChannel('CodePerformanceDebuggerAST');
     }
 
     public async analyze(code: string, runs?: number[]): Promise<AnalysisResult> {
@@ -57,12 +58,6 @@ export class ASTAnalyzer implements Analyzer {
             }
         }
 
-        // Log operation counts for debugging
-        console.log('Operation Counts:', operationCounts);
-
-        // Now categorize based on the operation counts
-        //const growthCategory = this.categorizeGrowthUsingLagrange(operationCounts, fixedRuns);
-        // const growthCategory = this.categorizeGrowthUsingRawRates(operationCounts, fixedRuns);
         const growthCategory = this.categorizeGrowth(operationCounts, fixedRuns);
 
         return { bigO: growthCategory, message: '' };
@@ -108,33 +103,33 @@ export class ASTAnalyzer implements Analyzer {
         let operationCount = 0;
 
         switch (node.kind) {
-            case 'ForStmt':
-            case 'WhileStmt':
+            case NodeKind.ForStmt:
+            case NodeKind.WhileStmt:
                 const iterationResult = this.getIterationComplexity(node);
                 nodeComplexity += iterationResult.complexity;
                 operationCount += iterationResult.operations;
                 break;
-            case 'IfStmt':
+            case NodeKind.IfStmt:
                 const conditionalResult = this.analyzeConditional(node as IfStmt);
                 nodeComplexity += conditionalResult.complexity;
                 operationCount += conditionalResult.operations;
                 break;
-            case 'CallExpr':
+            case NodeKind.CallExpr:
                 const functionCallResult = this.analyzeFunctionCall(node as CallExpr);
                 nodeComplexity += functionCallResult.complexity;
                 operationCount += functionCallResult.operations;
                 break;
-            case 'BinaryOperator':
+            case NodeKind.BinaryOperator:
                 const binaryOperatorResult = this.analyzeBinaryOperator(node as BinaryOperator);
                 nodeComplexity += binaryOperatorResult.complexity;
                 operationCount += binaryOperatorResult.operations;
                 break;
-            case 'VarDecl':
+            case NodeKind.VarDecl:
                 this.handleVariableDeclaration(node as VarDecl);
                 operationCount += 1;
                 nodeComplexity += 1;
                 break;
-            case 'CompoundStmt':
+            case NodeKind.CompoundStmt:
                 // Check if 'inner' is defined and iterable
                 if (Array.isArray(node.inner)) {
                     for (const innerNode of node.inner) {
@@ -163,14 +158,12 @@ export class ASTAnalyzer implements Analyzer {
         let varValue = this.currentN;  // Default value is `currentN`
 
         // If the variable has an initializer, handle it
-        if (node.inner && node.inner?.length > 0 && node.inner[0].kind === 'IntegerLiteral') {
+        if (node.inner && node.inner?.length > 0 && node.inner[0].kind === NodeKind.IntegerLiteral) {
             this.evaluateExpression(node.inner[0], varName);
         } else {
             this.variableTable.set(varName, varValue);
         }
     }
-
-
 
     private getIterationComplexity(node: ForStmt | WhileStmt): NodeAnalysisResult {
 
@@ -191,25 +184,25 @@ export class ASTAnalyzer implements Analyzer {
     }
 
     private isExponentialPatternInLoop(node: ForStmt | WhileStmt): boolean {
-        if (node.kind === 'ForStmt' || node.kind === 'WhileStmt') {
+        if (node.kind === NodeKind.ForStmt || node.kind === NodeKind.WhileStmt) {
             const [loopInit, , loopCondition, loopIncrement, loopBody] = node.inner;
 
             let loopControlVar: string | null = null;
 
             // Check initialization to detect the control variable and any exponential growth
-            if (loopInit.kind === 'BinaryOperator') {
+            if (loopInit.kind === NodeKind.BinaryOperator) {
                 const initOp = loopInit as BinaryOperator;
                 if (initOp.opcode === '=') {
                     const leftOperand = initOp.inner[0];
                     const rightOperand = initOp.inner[1];
 
                     // If the left operand is a declaration reference, we identify it as the control variable
-                    if (leftOperand.kind === 'DeclRefExpr') {
+                    if (leftOperand.kind === NodeKind.DeclRefExpr) {
                         loopControlVar = (leftOperand as DeclRefExpr).referencedDecl.name; // Store the control variable's name
                     }
 
                     // Check if the right operand involves an exponential operation (shift or multiplication)
-                    if (rightOperand.kind === 'BinaryOperator') {
+                    if (rightOperand.kind === NodeKind.BinaryOperator) {
                         const rightOp = rightOperand as BinaryOperator;
                         if (rightOp.opcode === '<<' || rightOp.opcode === '>>' || rightOp.opcode === '*') {
                             return true;  // Exponential initialization like `controlVar = 1 << n`, `controlVar = controlVar * 2`
@@ -219,10 +212,10 @@ export class ASTAnalyzer implements Analyzer {
             }
 
             // Handle case where the variable is declared without initialization
-            if (loopInit.kind === 'DeclStmt') {
+            if (loopInit.kind === NodeKind.DeclStmt) {
                 const declStmt = loopInit as DeclStmt;
                 for (const decl of declStmt.inner) {
-                    if (decl.kind === 'VarDecl') {
+                    if (decl.kind === NodeKind.VarDecl) {
                         loopControlVar = (decl as VarDecl).name;
                     }
                 }
@@ -232,16 +225,16 @@ export class ASTAnalyzer implements Analyzer {
             if (!loopControlVar) { return false; }
 
             // Check the loop condition to see if it involves an exponential pattern (bit-shift or multiplication)
-            if (loopCondition.kind === 'BinaryOperator') {
+            if (loopCondition.kind === NodeKind.BinaryOperator) {
                 const conditionOp = loopCondition as BinaryOperator;
                 if (conditionOp.opcode === '<' || conditionOp.opcode === '>=' || conditionOp.opcode === '<=') {
                     const leftOperand = conditionOp.inner[0];
                     const rightOperand = conditionOp.inner[1];
 
                     // Check if the control variable is involved in an exponential pattern in the condition
-                    if (leftOperand.kind === 'DeclRefExpr' && (leftOperand as DeclRefExpr).referencedDecl.name === loopControlVar) {
+                    if (leftOperand.kind === NodeKind.DeclRefExpr && (leftOperand as DeclRefExpr).referencedDecl.name === loopControlVar) {
                         // Check for shift or multiplication patterns in the right operand
-                        if (rightOperand.kind === 'BinaryOperator') {
+                        if (rightOperand.kind === NodeKind.BinaryOperator) {
                             const rightOp = rightOperand as BinaryOperator;
                             if (rightOp.opcode === '<<' || rightOp.opcode === '>>' || rightOp.opcode === '*' || rightOp.opcode === '+') {
                                 return true;  // Exponential condition like `controlVar < (1 << n)` or `controlVar < (controlVar * 2)`
@@ -249,14 +242,14 @@ export class ASTAnalyzer implements Analyzer {
                         }
 
                         // Specifically check for exponential iteration count (2^n or 1 << n)
-                        if (rightOperand.kind === 'BinaryOperator' && (rightOperand as BinaryOperator).opcode === '<<') {
+                        if (rightOperand.kind === NodeKind.BinaryOperator && (rightOperand as BinaryOperator).opcode === '<<') {
                             const shiftOp = rightOperand as BinaryOperator;
                             const shiftLeftOperand = shiftOp.inner[0] as IntegerLiteral;
                             const shiftRightOperand = shiftOp.inner[1] as DeclRefExpr;
 
                             // If we are comparing controlVar to 2^n (1 << n)
-                            if (shiftLeftOperand.kind === 'IntegerLiteral' && shiftLeftOperand.value === '1' &&
-                                shiftRightOperand.kind === 'DeclRefExpr' &&
+                            if (shiftLeftOperand.kind === NodeKind.IntegerLiteral && shiftLeftOperand.value === '1' &&
+                                shiftRightOperand.kind === NodeKind.DeclRefExpr &&
                                 shiftRightOperand.referencedDecl.name === loopControlVar) {
                                 return true;  // Exponential pattern like `i < (1 << n)`
                             }
@@ -266,15 +259,15 @@ export class ASTAnalyzer implements Analyzer {
             }
 
             // Check the loop increment for exponential growth patterns (shift or multiplication)
-            if (loopIncrement.kind === 'BinaryOperator') {
+            if (loopIncrement.kind === NodeKind.BinaryOperator) {
                 const incrementOp = loopIncrement as BinaryOperator;
                 if (incrementOp.opcode === '+') {
                     const leftOperand = incrementOp.inner[0];
                     const rightOperand = incrementOp.inner[1];
 
                     // Check if the increment involves an exponential growth pattern (shift or multiplication)
-                    if (leftOperand.kind === 'DeclRefExpr' && (leftOperand as DeclRefExpr).referencedDecl.name === loopControlVar) {
-                        if (rightOperand.kind === 'BinaryOperator') {
+                    if (leftOperand.kind === NodeKind.DeclRefExpr && (leftOperand as DeclRefExpr).referencedDecl.name === loopControlVar) {
+                        if (rightOperand.kind === NodeKind.BinaryOperator) {
                             const rightOp = rightOperand as BinaryOperator;
                             if (rightOp.opcode === '<<' || rightOp.opcode === '>>' || rightOp.opcode === '*') {
                                 return true;  // Exponential increment like `controlVar += (1 << n)` or `controlVar += (controlVar * 2)`
@@ -285,7 +278,7 @@ export class ASTAnalyzer implements Analyzer {
             }
 
             // Check the loop body for exponential patterns affecting the control variable
-            if (loopBody.kind === 'CompoundStmt') {
+            if (loopBody.kind === NodeKind.CompoundStmt) {
                 for (const innerNode of loopBody.inner) {
                     if (this.containsExponentialPatternInBody(innerNode, loopControlVar)) {
                         return true;
@@ -298,7 +291,7 @@ export class ASTAnalyzer implements Analyzer {
     }
 
     private containsExponentialPatternInBody(node: ASTNode, loopControlVar: string): boolean {
-        if (node.kind === 'BinaryOperator') {
+        if (node.kind === NodeKind.BinaryOperator) {
             const opNode = node as BinaryOperator;
             const operator = opNode.opcode;
 
@@ -333,17 +326,17 @@ export class ASTAnalyzer implements Analyzer {
 
     // Helper method to check if an operand is the control variable or involves an IntegerLiteral or ImplicitCastExpr
     private isControlVariable(operand: ASTNode, loopControlVar: string): boolean {
-        if (operand.kind === 'DeclRefExpr') {
+        if (operand.kind === NodeKind.DeclRefExpr) {
             // Direct variable reference
             return (operand as DeclRefExpr).referencedDecl.name === loopControlVar;
         }
 
-        if (operand.kind === 'IntegerLiteral') {
+        if (operand.kind === NodeKind.IntegerLiteral) {
             // Direct integer literal; we don't normally expect this for a control variable but handle it just in case
             return false;
         }
 
-        if (operand.kind === 'ImplicitCastExpr') {
+        if (operand.kind === NodeKind.ImplicitCastExpr) {
             // Check inside the cast expression
             const castOperand = (operand as ImplicitCastExpr).inner[0];
             return this.isControlVariable(castOperand, loopControlVar);
@@ -401,17 +394,17 @@ export class ASTAnalyzer implements Analyzer {
     }
 
     private isForStmt(node: ForStmt | WhileStmt): node is ForStmt {
-        return node.kind === 'ForStmt';
+        return node.kind === NodeKind.ForStmt;
     }
 
     private isWhileStmt(node: ForStmt | WhileStmt): node is WhileStmt {
-        return node.kind === 'WhileStmt';
+        return node.kind === NodeKind.WhileStmt;
     }
 
     private evaluateConditionIterations(conditionNode: ASTNode): NodeAnalysisResult {
         let operationCount = 0;
 
-        if (conditionNode.kind === 'BinaryOperator') {
+        if (conditionNode.kind === NodeKind.BinaryOperator) {
             const binaryOperatorNode = conditionNode as BinaryOperator;
             // Evaluate left and right expressions
             const leftResult = this.evaluateExpression(conditionNode.inner[0]);
@@ -444,7 +437,7 @@ export class ASTAnalyzer implements Analyzer {
 
     private evaluateExpression(node: ASTNode, name?: string): NodeAnalysisResult {
         // If it's a literal value (IntegerLiteral)
-        if (node.kind === 'IntegerLiteral') {
+        if (node.kind === NodeKind.IntegerLiteral) {
             const value = Number.parseInt((node as IntegerLiteral).value);
             const literalName = `literal_${value}`;
             this.variableTable.set(name ?? literalName, value);
@@ -453,17 +446,17 @@ export class ASTAnalyzer implements Analyzer {
         }
 
         // Handle other expressions (variables, casts, binary operators, etc.)
-        if (node.kind === 'DeclRefExpr') {
+        if (node.kind === NodeKind.DeclRefExpr) {
             return this.getVariableValue((node as DeclRefExpr));
         }
 
         // Handle implicit casts (evaluate the inner expression)
-        if (node.kind === 'ImplicitCastExpr' && node.inner.length > 0) {
+        if (node.kind === NodeKind.ImplicitCastExpr && node.inner.length > 0) {
             return this.evaluateExpression((node as ImplicitCastExpr).inner[0]);
         }
 
         // If the node is a binary operator, recursively evaluate both sides
-        if (node.kind === 'BinaryOperator') {
+        if (node.kind === NodeKind.BinaryOperator) {
             const leftResult = this.evaluateExpression(node.inner[0]);
             const rightResult = this.evaluateExpression(node.inner[1]);
             const binaryOperationResult = this.evaluateBinaryOperation((node as BinaryOperator).opcode, leftResult.value ?? 0, rightResult.value ?? 0);
@@ -537,7 +530,7 @@ export class ASTAnalyzer implements Analyzer {
         }
 
         // If it's a BinaryOperator case (for statements like i = i + 1)
-        if (node.kind === 'BinaryOperator' && node.inner.length === 2) {
+        if (node.kind === NodeKind.BinaryOperator && node.inner.length === 2) {
             const left = node.inner[0];
             const right = node.inner[1];
             return { complexity: 1, operations: 1 };

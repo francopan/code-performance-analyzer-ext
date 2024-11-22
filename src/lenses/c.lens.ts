@@ -1,8 +1,8 @@
-import { CancellationToken, CodeLens, CodeLensProvider, ProviderResult, Range, TextDocument, Uri, window } from "vscode";
+import * as vscode from 'vscode';
 import { commands } from "../constants/commands.const";
 import { AnalysisResult } from "../models/analysis-result.model";
 
-export class CCodeLensProvider implements CodeLensProvider {
+export class CCodeLensProvider implements vscode.CodeLensProvider {
 	private static instance: CCodeLensProvider;
 	private static analysisResults: Map<string, Map<number, AnalysisResult>> = new Map();
 
@@ -15,7 +15,7 @@ export class CCodeLensProvider implements CodeLensProvider {
 		return CCodeLensProvider.instance;
 	}
 
-	public static updateAnalysisResult(uri: Uri, range: Range, result: AnalysisResult) {
+	public static updateAnalysisResult(uri: vscode.Uri, range: vscode.Range, result: AnalysisResult) {
 		const key = uri.toString();
 		if (!this.analysisResults.has(key)) {
 			this.analysisResults.set(key, new Map());
@@ -23,42 +23,55 @@ export class CCodeLensProvider implements CodeLensProvider {
 		this.analysisResults.get(key)!.set(range.start.line, result);
 
 		// Trigger CodeLens refresh by notifying VS Code that the document has changed
-		const editor = window.visibleTextEditors.find(editor => editor.document.uri.toString() === uri.toString());
+		const editor = vscode.window.visibleTextEditors.find(editor => editor.document.uri.toString() === uri.toString());
 		if (editor) {
 			editor.document.save(); // Save document to force refresh
 		}
 	}
 
-	public provideCodeLenses(document: TextDocument, token: CancellationToken): ProviderResult<CodeLens[]> {
-		const codeLenses: CodeLens[] = [];
-		const text = document.getText();
-		const functionRegex = /[\w]+\s+[\w]+\s*\([^)]*\)\s*{?/g;
-		let match: RegExpExecArray | null;
+	public async provideCodeLenses(document: vscode.TextDocument, token: vscode.CancellationToken): Promise<vscode.CodeLens[]> {
+		const codeLenses: vscode.CodeLens[] = [];
 
-		while (match = functionRegex.exec(text)) {
-			const line = document.lineAt(document.positionAt(match.index).line);
-			const range = new Range(line.range.start, line.range.end);
-			const analysisResult = CCodeLensProvider.analysisResults.get(document.uri.toString())?.get(line.lineNumber);
+		// Retrieve document symbols using the executeDocumentSymbolProvider command
+		const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+			'vscode.executeDocumentSymbolProvider',
+			document.uri
+		);
 
-			codeLenses.push(new CodeLens(range, {
-				title: `Analyze AST`,
+		// Filter for function symbols
+		const functionSymbols = symbols.filter(symbol => symbol.kind === vscode.SymbolKind.Function);
+
+		// Iterate over the function symbols
+		functionSymbols.forEach(symbol => {
+			const range: vscode.Range = symbol.range;
+			const startPos = range.start;
+			const endPos = range.end;
+
+			// Create CodeLens for AST analysis
+			codeLenses.push(new vscode.CodeLens(range, {
+				title: 'Analyze AST',
 				command: commands.analyzeFunctionAST,
 				arguments: [document.uri, range]
 			}));
 
-			codeLenses.push(new CodeLens(range, {
-				title: `Analyze LLM`,
+			// Create CodeLens for LLM analysis
+			codeLenses.push(new vscode.CodeLens(range, {
+				title: 'Analyze LLM',
 				command: commands.analyzeFunctionLLM,
 				arguments: [document.uri, range]
 			}));
 
-			codeLenses.push(new CodeLens(range, {
-				title: analysisResult
-					? ` Complexity: ${analysisResult.bigO}`
-					: '',
-				command: commands.analyzeFunctionLLM
-			}));
-		}
+			// Add complexity information, if available
+			const analysisResult = CCodeLensProvider.analysisResults.get(document.uri.toString())?.get(startPos.line);
+			if (analysisResult) {
+				codeLenses.push(new vscode.CodeLens(range, {
+					title: `Complexity: ${analysisResult.bigO}`,
+					command: commands.analyzeFunctionLLM,
+					arguments: [document.uri, range]
+				}));
+			}
+		});
+
 		return codeLenses;
 	}
 

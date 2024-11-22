@@ -1,3 +1,4 @@
+import { NodeKind } from "../enums/node-kind.enum";
 import { ASTNode, ASTNodeLocation } from "./ast-node.model";
 
 type ValueCategory = 'prvalue' | 'lvalue' | string;
@@ -19,7 +20,7 @@ type NodeType =
 type CastKind = 'LValueToRValue' | string;
 
 export interface OtherVariant extends ASTNode {
-    kind: string;
+    kind: NodeKind;
 }
 
 export interface NamespaceDecl extends ASTNode {
@@ -97,6 +98,12 @@ export interface ArraySubscriptExpr extends ASTNode {
 }
 
 export interface BinaryOperator extends ASTNode {
+    opcode: string;
+    type: NodeType;
+    valueCategory: ValueCategory;
+}
+
+export interface UnaryOperator extends ASTNode {
     opcode: string;
     type: NodeType;
     valueCategory: ValueCategory;
