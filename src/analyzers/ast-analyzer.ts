@@ -79,7 +79,7 @@ export class ASTAnalyzer implements Analyzer {
             vscode.window.showInformationMessage('AST retrieved successfully.');
             return JSON.parse(stdout) as ClangNode;
         } catch (error) {
-            vscode.window.showErrorMessage('Error during AST retrieval: ' + JSON.stringify(error) ?? '');
+            vscode.window.showErrorMessage('Error during AST retrieval: ' + JSON.stringify(error));
             return null;
         }
     }

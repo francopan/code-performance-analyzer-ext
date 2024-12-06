@@ -1,14 +1,20 @@
 {
   "name": "code-performance-analyzer",
   "displayName": "Code Performance Analyzer",
-  "description": "",
-  "version": "0.0.1",
+  "description": "An extension that aims to analyze big o for C code",
+  "version": "0.0.2",
   "engines": {
-    "vscode": "^1.88.1"
+    "vscode": "^1.92.0"
   },
+  "publisher": "FrancoBrunettaPan",
   "categories": [
     "Other"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/francopan/code-performance-analyzer-ext"
+  },
+  "icon": "icon.png",
   "main": "./out/extension.js",
   "activationEvents": [],
   "contributes": {
