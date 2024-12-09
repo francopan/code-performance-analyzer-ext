@@ -4,19 +4,28 @@ import { LLMAnalyzer } from './analyzers/llm-analyzer';
 import { commands } from './constants/commands.const';
 import { CCodeLensProvider } from './lenses/c.lens';
 import { AnalysisResultWebview } from './webviews/analyzis-result.webview';
+import { AnalysisResult } from './models/analysis-result.model';
 
 let statusBar: vscode.StatusBarItem;
 let codeLens: vscode.Disposable | undefined;
 let webView: AnalysisResultWebview | undefined;
 let llmAnalyzer: LLMAnalyzer;
 let astAnalyzer: ASTAnalyzer;
+let config: vscode.WorkspaceConfiguration;
+let timeout: number = 10;
 
 export function activate(context: vscode.ExtensionContext) {
+	initializeConfig();
 	initializeWebView(context);
 	registerCodeLensProvider(context);
 	initializeStatusBar(context);
 	registerCommands(context);
 	instantiateAnalyzers();
+}
+
+function initializeConfig() {
+	config = vscode.workspace.getConfiguration('llmAnalyzer');
+	timeout = (config.get<number>('timeout') ?? timeout) * 1000;
 }
 
 function initializeWebView(context: vscode.ExtensionContext) {
@@ -38,7 +47,6 @@ function initializeStatusBar(context: vscode.ExtensionContext) {
 }
 
 function instantiateAnalyzers() {
-	const config = vscode.workspace.getConfiguration('llmAnalyzer');
 	const apiUrl = config.get<string>('apiUrl') || 'http://127.0.0.1:11434/api/generate';
 	const model = config.get<string>('model') || 'mistral';
 	llmAnalyzer = new LLMAnalyzer(apiUrl, model);
@@ -62,6 +70,7 @@ function registerCommands(context: vscode.ExtensionContext) {
 }
 
 async function analyzeSelectedCode(uri: vscode.Uri, range: vscode.Range, method: 'ast' | 'llm', updateCodeLens = true) {
+	let timeoutHandle: NodeJS.Timeout | undefined;
 	try {
 		const document = await vscode.workspace.openTextDocument(uri);
 		const code = document.getText(range);
@@ -73,23 +82,39 @@ async function analyzeSelectedCode(uri: vscode.Uri, range: vscode.Range, method:
 		statusBar.text = 'Analyzing code...';
 		statusBar.show();
 
-		const analysisResult = method === 'ast'
-			? await astAnalyzer.analyze(code)
-			: await llmAnalyzer.analyze(code);
+		const timeoutPromise = new Promise((_, reject) => {
+			timeoutHandle = setTimeout(() => {
+				reject(new Error('Analysis timed out.'));
+			}, timeout);
+		});
 
-		if (analysisResult) {
+		const analysisPromise = method === 'ast'
+			? astAnalyzer.analyze(code)
+			: llmAnalyzer.analyze(code);
+
+		const analysisResult: AnalysisResult | unknown = await Promise.race([analysisPromise, timeoutPromise]);
+
+		if (
+			analysisResult &&
+			typeof analysisResult === 'object' &&
+			'bigO' in analysisResult &&
+			'message' in analysisResult
+		) {
 			if (updateCodeLens) {
-				CCodeLensProvider.updateAnalysisResult(uri, range, analysisResult);
+				CCodeLensProvider.updateAnalysisResult(uri, range, analysisResult as AnalysisResult);
 			}
 			await vscode.window.activeTextEditor?.document.save();
-			webView?.showAnalysisResult(analysisResult);
+			webView?.showAnalysisResult(analysisResult as AnalysisResult);
 		} else {
-			throw new Error('Analysis result is undefined.');
+			throw new Error('Analysis result is undefined or invalid.');
 		}
 	} catch (error: any) {
 		vscode.window.showErrorMessage(`Failed to analyze code: ${error.message}`);
 		console.error(error);
 	} finally {
+		if (timeoutHandle) {
+			clearTimeout(timeoutHandle);
+		}
 		statusBar.text = 'Analysis completed';
 		setTimeout(() => statusBar.hide(), 3000);
 	}

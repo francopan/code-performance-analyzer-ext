@@ -2,9 +2,9 @@
   "name": "code-performance-analyzer",
   "displayName": "Code Performance Analyzer",
   "description": "An extension that aims to analyze big o for C code",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "engines": {
-    "vscode": "^1.92.0"
+    "vscode": "^1.88.0"
   },
   "publisher": "FrancoBrunettaPan",
   "categories": [
@@ -46,6 +46,11 @@
       "type": "object",
       "title": "LLM Analyzer Settings",
       "properties": {
+         "llmAnalyzer.timeout": {
+          "type": "integer",
+          "default": 10,
+          "description": "Number of seconds before the analysis times out."
+         },
           "llmAnalyzer.apiUrl": {
               "type": "string",
               "default": "http://127.0.0.1:11434/api/generate",
